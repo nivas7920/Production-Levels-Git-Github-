@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using OnlineShoppingApplication.Data;
 using OnlineShoppingApplication.Models;
 using Microsoft.AspNetCore.Authorization;
+
 namespace OnlineShoppingApplication.Controllers
 {
     /// <summary>
@@ -10,12 +11,12 @@ namespace OnlineShoppingApplication.Controllers
     /// Discount is applied automatically when subtotal >= 5000.
     /// </summary>
     [ApiController]
-
     [Route("api/[controller]")]
     [Authorize]
     public class CartController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+
         private const decimal DISCOUNT_THRESHOLD = 5000;
 
         public CartController(ApplicationDbContext context)
@@ -23,9 +24,9 @@ namespace OnlineShoppingApplication.Controllers
             _context = context;
         }
 
+        /// <summary>
         /// Create a new cart.
-      
-        /// <returns>New cart details</returns>
+        /// </summary>
         [HttpPost("create")]
         public async Task<ActionResult<Cart>> CreateCart()
         {
@@ -40,19 +41,26 @@ namespace OnlineShoppingApplication.Controllers
                 _context.Carts.Add(cart);
                 await _context.SaveChangesAsync();
 
-                return CreatedAtAction(nameof(GetCart), new { id = cart.Id }, cart);
+                return CreatedAtAction(
+                    nameof(GetCart),
+                    new { id = cart.Id },
+                    cart
+                );
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { message = "Error creating cart", error = ex.Message });
+                Console.WriteLine($"Error creating cart: {ex}");
+
+                return StatusCode(500, new
+                {
+                    message = "An error occurred while creating the cart."
+                });
             }
         }
 
         /// <summary>
         /// Get a specific cart with all its items.
         /// </summary>
-        /// <param name="id">Cart ID</param>
-        /// <returns>Cart details with items</returns>
         [HttpGet("{id}")]
         public async Task<ActionResult<Cart>> GetCart(int id)
         {
@@ -65,70 +73,104 @@ namespace OnlineShoppingApplication.Controllers
 
                 if (cart == null)
                 {
-                    return NotFound(new { message = $"Cart with ID {id} not found" });
+                    return NotFound(new
+                    {
+                        message = $"Cart with ID {id} not found"
+                    });
                 }
 
                 return Ok(cart);
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { message = "Error retrieving cart", error = ex.Message });
+                Console.WriteLine($"Error retrieving cart: {ex}");
+
+                return StatusCode(500, new
+                {
+                    message = "An error occurred while retrieving the cart."
+                });
             }
         }
 
         /// <summary>
-        /// Add a product to the cart. Quantity is automatically adjusted based on stock.
+        /// Add a product to the cart.
+        /// Quantity is automatically adjusted based on stock.
         /// </summary>
-        /// <param name="id">Cart ID</param>
-        /// <param name="productId">Product ID to add</param>
-        /// <param name="quantity">Quantity to add (default: 1)</param>
-        /// <returns>Updated cart with the new item</returns>
         [HttpPost("{id}/add-item")]
-        public async Task<ActionResult<Cart>> AddToCart(int id, [FromQuery] int productId, [FromQuery] int quantity = 1)
+        public async Task<ActionResult<Cart>> AddToCart(
+            int id,
+            [FromQuery] int productId,
+            [FromQuery] int quantity = 1)
         {
             try
             {
+                // 1. Validate quantity
                 if (quantity <= 0)
                 {
-                    return BadRequest(new { message = "Quantity must be greater than 0" });
+                    return BadRequest(new
+                    {
+                        message = "Quantity must be greater than 0"
+                    });
                 }
 
+                // 2. Find cart
                 var cart = await _context.Carts
                     .Include(c => c.CartItems)
                     .FirstOrDefaultAsync(c => c.Id == id);
 
                 if (cart == null)
                 {
-                    return NotFound(new { message = $"Cart with ID {id} not found" });
+                    return NotFound(new
+                    {
+                        message = $"Cart with ID {id} not found"
+                    });
                 }
 
-                var product = await _context.Products.FindAsync(productId);
+                // 3. Find product
+                var product = await _context.Products
+                    .FindAsync(productId);
 
                 if (product == null)
                 {
-                    return NotFound(new { message = $"Product with ID {productId} not found" });
+                    return NotFound(new
+                    {
+                        message = $"Product with ID {productId} not found"
+                    });
                 }
 
+                // 4. Validate stock
                 if (product.StockQuantity < quantity)
                 {
-                    return BadRequest(new { message = $"Insufficient stock. Available: {product.StockQuantity}, Requested: {quantity}" });
+                    return BadRequest(new
+                    {
+                        message =
+                            $"Insufficient stock. Available: {product.StockQuantity}, Requested: {quantity}"
+                    });
                 }
 
-                // Check if product already in cart
-                var existingItem = cart.CartItems.FirstOrDefault(ci => ci.ProductId == productId);
+                // 5. Check whether product already exists in cart
+                var existingItem = cart.CartItems
+                    .FirstOrDefault(ci => ci.ProductId == productId);
 
                 if (existingItem != null)
                 {
-                    // Update quantity
+                    // 6. Validate total quantity against stock
                     if (existingItem.Quantity + quantity > product.StockQuantity)
                     {
-                        return BadRequest(new { message = $"Cannot add {quantity} more items. Max available: {product.StockQuantity - existingItem.Quantity}" });
+                        return BadRequest(new
+                        {
+                            message =
+                                $"Cannot add {quantity} more items. " +
+                                $"Max available: {product.StockQuantity - existingItem.Quantity}"
+                        });
                     }
+
+                    // 7. Update existing quantity
                     existingItem.Quantity += quantity;
                 }
                 else
                 {
-                    // Add new item to cart
+                    // 8. Add new cart item
                     var cartItem = new CartItem
                     {
                         CartId = id,
@@ -140,30 +182,51 @@ namespace OnlineShoppingApplication.Controllers
                     _context.CartItems.Add(cartItem);
                 }
 
+                // 9. Save changes
                 await _context.SaveChangesAsync();
 
-                // Reload cart with updated items
+                // 10. Reload cart with updated items
                 var updatedCart = await _context.Carts
                     .Include(c => c.CartItems)
                     .ThenInclude(ci => ci.Product)
                     .FirstOrDefaultAsync(c => c.Id == id);
 
+                // 11. Safety check after reload
+                if (updatedCart == null)
+                {
+                    return NotFound(new
+                    {
+                        message =
+                            $"Cart with ID {id} not found after adding item"
+                    });
+                }
+
+                // 12. Return updated cart
                 return Ok(updatedCart);
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { message = "Error adding item to cart", error = ex.Message });
+                // Log complete exception on server
+                Console.WriteLine(
+                    $"Error adding item to cart: {ex}"
+                );
+
+                // Do not expose internal exception details
+                return StatusCode(500, new
+                {
+                    message =
+                        "An error occurred while adding the item to the cart."
+                });
             }
         }
 
         /// <summary>
         /// Remove a product from the cart.
         /// </summary>
-        /// <param name="id">Cart ID</param>
-        /// <param name="productId">Product ID to remove</param>
-        /// <returns>Updated cart</returns>
         [HttpDelete("{id}/remove-item")]
-        public async Task<ActionResult<Cart>> RemoveFromCart(int id, [FromQuery] int productId)
+        public async Task<ActionResult<Cart>> RemoveFromCart(
+            int id,
+            [FromQuery] int productId)
         {
             try
             {
@@ -173,48 +236,75 @@ namespace OnlineShoppingApplication.Controllers
 
                 if (cart == null)
                 {
-                    return NotFound(new { message = $"Cart with ID {id} not found" });
+                    return NotFound(new
+                    {
+                        message = $"Cart with ID {id} not found"
+                    });
                 }
 
-                var cartItem = cart.CartItems.FirstOrDefault(ci => ci.ProductId == productId);
+                var cartItem = cart.CartItems
+                    .FirstOrDefault(ci => ci.ProductId == productId);
 
                 if (cartItem == null)
                 {
-                    return NotFound(new { message = $"Product with ID {productId} not found in cart" });
+                    return NotFound(new
+                    {
+                        message =
+                            $"Product with ID {productId} not found in cart"
+                    });
                 }
 
                 _context.CartItems.Remove(cartItem);
+
                 await _context.SaveChangesAsync();
 
-                // Reload cart with updated items
                 var updatedCart = await _context.Carts
                     .Include(c => c.CartItems)
                     .ThenInclude(ci => ci.Product)
                     .FirstOrDefaultAsync(c => c.Id == id);
 
+                if (updatedCart == null)
+                {
+                    return NotFound(new
+                    {
+                        message =
+                            $"Cart with ID {id} not found after removing item"
+                    });
+                }
+
                 return Ok(updatedCart);
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { message = "Error removing item from cart", error = ex.Message });
+                Console.WriteLine(
+                    $"Error removing item from cart: {ex}"
+                );
+
+                return StatusCode(500, new
+                {
+                    message =
+                        "An error occurred while removing the item from the cart."
+                });
             }
         }
 
         /// <summary>
         /// Update quantity of a product in the cart.
         /// </summary>
-        /// <param name="id">Cart ID</param>
-        /// <param name="productId">Product ID</param>
-        /// <param name="quantity">New quantity</param>
-        /// <returns>Updated cart</returns>
         [HttpPut("{id}/update-item")]
-        public async Task<ActionResult<Cart>> UpdateCartItem(int id, [FromQuery] int productId, [FromQuery] int quantity)
+        public async Task<ActionResult<Cart>> UpdateCartItem(
+            int id,
+            [FromQuery] int productId,
+            [FromQuery] int quantity)
         {
             try
             {
                 if (quantity <= 0)
                 {
-                    return BadRequest(new { message = "Quantity must be greater than 0" });
+                    return BadRequest(new
+                    {
+                        message = "Quantity must be greater than 0"
+                    });
                 }
 
                 var cart = await _context.Carts
@@ -223,53 +313,86 @@ namespace OnlineShoppingApplication.Controllers
 
                 if (cart == null)
                 {
-                    return NotFound(new { message = $"Cart with ID {id} not found" });
+                    return NotFound(new
+                    {
+                        message = $"Cart with ID {id} not found"
+                    });
                 }
 
-                var cartItem = cart.CartItems.FirstOrDefault(ci => ci.ProductId == productId);
+                var cartItem = cart.CartItems
+                    .FirstOrDefault(ci => ci.ProductId == productId);
 
                 if (cartItem == null)
                 {
-                    return NotFound(new { message = $"Product with ID {productId} not found in cart" });
+                    return NotFound(new
+                    {
+                        message =
+                            $"Product with ID {productId} not found in cart"
+                    });
                 }
 
-                var product = await _context.Products.FindAsync(productId);
+                var product = await _context.Products
+                    .FindAsync(productId);
 
                 if (product == null)
                 {
-                    return NotFound(new { message = $"Product with ID {productId} not found" });
+                    return NotFound(new
+                    {
+                        message =
+                            $"Product with ID {productId} not found"
+                    });
                 }
 
                 if (quantity > product.StockQuantity)
                 {
-                    return BadRequest(new { message = $"Insufficient stock. Available: {product.StockQuantity}" });
+                    return BadRequest(new
+                    {
+                        message =
+                            $"Insufficient stock. Available: {product.StockQuantity}"
+                    });
                 }
 
                 cartItem.Quantity = quantity;
+
                 await _context.SaveChangesAsync();
 
-                // Reload cart with updated items
                 var updatedCart = await _context.Carts
                     .Include(c => c.CartItems)
                     .ThenInclude(ci => ci.Product)
                     .FirstOrDefaultAsync(c => c.Id == id);
 
+                if (updatedCart == null)
+                {
+                    return NotFound(new
+                    {
+                        message =
+                            $"Cart with ID {id} not found after updating item"
+                    });
+                }
+
                 return Ok(updatedCart);
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { message = "Error updating cart item", error = ex.Message });
+                Console.WriteLine(
+                    $"Error updating cart item: {ex}"
+                );
+
+                return StatusCode(500, new
+                {
+                    message =
+                        "An error occurred while updating the cart item."
+                });
             }
         }
 
         /// <summary>
-        /// Get the purchase summary for a cart with itemised breakdown, subtotal, discount, and grand total.
+        /// Get the purchase summary for a cart.
         /// Discount is applied when subtotal >= 5000.
         /// </summary>
-        /// <param name="id">Cart ID</param>
-        /// <returns>Purchase summary</returns>
         [HttpGet("{id}/summary")]
-        public async Task<ActionResult<PurchaseSummary>> GetPurchaseSummary(int id)
+        public async Task<ActionResult<PurchaseSummary>> GetPurchaseSummary(
+            int id)
         {
             try
             {
@@ -280,7 +403,10 @@ namespace OnlineShoppingApplication.Controllers
 
                 if (cart == null)
                 {
-                    return NotFound(new { message = $"Cart with ID {id} not found" });
+                    return NotFound(new
+                    {
+                        message = $"Cart with ID {id} not found"
+                    });
                 }
 
                 var summary = new PurchaseSummary
@@ -293,9 +419,12 @@ namespace OnlineShoppingApplication.Controllers
 
                 foreach (var item in cart.CartItems)
                 {
-                    if (item.Product == null) continue;
+                    if (item.Product == null)
+                        continue;
 
-                    decimal itemTotal = item.Quantity * item.Price;
+                    decimal itemTotal =
+                        item.Quantity * item.Price;
+
                     subtotal += itemTotal;
 
                     summary.Items.Add(new CartItemSummary
@@ -305,38 +434,50 @@ namespace OnlineShoppingApplication.Controllers
                         Quantity = item.Quantity,
                         UnitPrice = item.Price,
                         ItemTotal = itemTotal,
-                        DiscountPercentage = item.Product.Discount
+                        DiscountPercentage =
+                            item.Product.Discount
                     });
                 }
 
                 summary.Subtotal = subtotal;
 
-                // Apply discount if subtotal >= 5000
-                // Use the highest discount from cart items
-                if (subtotal >= DISCOUNT_THRESHOLD && cart.CartItems.Any())
+                if (subtotal >= DISCOUNT_THRESHOLD &&
+                    cart.CartItems.Any())
                 {
-                    summary.DiscountPercentage = cart.CartItems
-                        .Where(ci => ci.Product != null)
-                        .Max(ci => ci.Product!.Discount);
+                    summary.DiscountPercentage =
+                        cart.CartItems
+                            .Where(ci => ci.Product != null)
+                            .Max(ci => ci.Product!.Discount);
 
-                    summary.DiscountAmount = Math.Round(subtotal * summary.DiscountPercentage / 100, 2);
+                    summary.DiscountAmount =
+                        Math.Round(
+                            subtotal *
+                            summary.DiscountPercentage / 100,
+                            2);
                 }
 
-                summary.GrandTotal = subtotal - summary.DiscountAmount;
+                summary.GrandTotal =
+                    subtotal - summary.DiscountAmount;
 
                 return Ok(summary);
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { message = "Error calculating purchase summary", error = ex.Message });
+                Console.WriteLine(
+                    $"Error calculating purchase summary: {ex}"
+                );
+
+                return StatusCode(500, new
+                {
+                    message =
+                        "An error occurred while calculating the purchase summary."
+                });
             }
         }
 
         /// <summary>
         /// Clear all items from the cart.
         /// </summary>
-        /// <param name="id">Cart ID</param>
-        /// <returns>Success message</returns>
         [HttpDelete("{id}/clear")]
         public async Task<ActionResult<object>> ClearCart(int id)
         {
@@ -348,17 +489,32 @@ namespace OnlineShoppingApplication.Controllers
 
                 if (cart == null)
                 {
-                    return NotFound(new { message = $"Cart with ID {id} not found" });
+                    return NotFound(new
+                    {
+                        message = $"Cart with ID {id} not found"
+                    });
                 }
 
                 _context.CartItems.RemoveRange(cart.CartItems);
+
                 await _context.SaveChangesAsync();
 
-                return Ok(new { message = "Cart cleared successfully" });
+                return Ok(new
+                {
+                    message = "Cart cleared successfully"
+                });
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { message = "Error clearing cart", error = ex.Message });
+                Console.WriteLine(
+                    $"Error clearing cart: {ex}"
+                );
+
+                return StatusCode(500, new
+                {
+                    message =
+                        "An error occurred while clearing the cart."
+                });
             }
         }
     }
