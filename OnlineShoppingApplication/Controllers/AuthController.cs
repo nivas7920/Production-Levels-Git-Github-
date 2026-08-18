@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Identity;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using OnlineShoppingApplication.Data;
@@ -9,7 +10,6 @@ namespace OnlineShoppingApplication.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-
     public class AuthController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
@@ -46,10 +46,12 @@ namespace OnlineShoppingApplication.Controllers
                 Email = request.Email
             };
 
-            // Hash Password
-            user.PasswordHash = _passwordHasher.HashPassword(user, request.Password);
+            // Hash password
+            user.PasswordHash = _passwordHasher.HashPassword(
+                user,
+                request.Password);
 
-            // Save User
+            // Save user
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
 
@@ -77,7 +79,7 @@ namespace OnlineShoppingApplication.Controllers
                 });
             }
 
-            // Verify Password
+            // Verify password
             var result = _passwordHasher.VerifyHashedPassword(
                 user,
                 user.PasswordHash,
@@ -91,7 +93,7 @@ namespace OnlineShoppingApplication.Controllers
                 });
             }
 
-            // Generate JWT Token
+            // Generate JWT token
             var token = _tokenService.CreateToken(
                 user.Id.ToString(),
                 user.Name,
@@ -107,6 +109,19 @@ namespace OnlineShoppingApplication.Controllers
                     user.Name,
                     user.Email
                 }
+            });
+        }
+
+        // ==========================
+        // Logout User
+        // ==========================
+        [Authorize]
+        [HttpPost("logout")]
+        public IActionResult Logout()
+        {
+            return Ok(new
+            {
+                Message = "Logout successful."
             });
         }
     }
