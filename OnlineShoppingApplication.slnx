@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="OnlineShoppingApplication.Tests/OnlineShoppingApplication.Tests.csproj" Id="162ad4b0-8ffe-45ee-afaf-fdd4137ae22d" />
+  <Project Path="OnlineShoppingApplication/OnlineShoppingApplication.csproj" />
+</Solution>

@@ -1,0 +1,109 @@
+### Online Shopping API - Testing Endpoints
+
+# Base URL
+@baseUrl = https://localhost:7183
+@contentType = application/json
+
+##################################
+### PRODUCTS ENDPOINTS
+##################################
+
+### Get all products
+GET {{baseUrl}}/api/products
+
+###
+### Get a specific product by ID
+GET {{baseUrl}}/api/products/1
+
+###
+### Get products by category (Electronics)
+GET {{baseUrl}}/api/products/category/Electronics
+
+###
+### Get products by category (Accessories)
+GET {{baseUrl}}/api/products/category/Accessories
+
+##################################
+### CART ENDPOINTS
+##################################
+
+### Create a new cart
+POST {{baseUrl}}/api/cart/create
+Content-Type: {{contentType}}
+
+###
+### Get cart details (replace {cartId} with actual cart ID)
+GET {{baseUrl}}/api/cart/1
+
+###
+### Add product to cart (Product ID 1, Quantity 1)
+POST {{baseUrl}}/api/cart/1/add-item?productId=1&quantity=1
+
+###
+### Add another product to cart (Product ID 2, Quantity 2)
+POST {{baseUrl}}/api/cart/1/add-item?productId=2&quantity=2
+
+###
+### Add Laptop (high price product) to cart (Product ID 1, Quantity 1 more)
+POST {{baseUrl}}/api/cart/1/add-item?productId=1&quantity=1
+
+###
+### Update cart item quantity (Product ID 1, new quantity 3)
+POST {{baseUrl}}/api/cart/1/update-item?productId=1&quantity=3
+
+###
+### Get Purchase Summary (shows discount logic)
+GET {{baseUrl}}/api/cart/1/summary
+
+###
+### Remove item from cart (Product ID 2)
+POST {{baseUrl}}/api/cart/1/remove-item?productId=2
+
+###
+### Get updated cart after removal
+GET {{baseUrl}}/api/cart/1
+
+###
+### Clear entire cart
+POST {{baseUrl}}/api/cart/1/clear
+
+###
+### Verify cart is empty
+GET {{baseUrl}}/api/cart/1
+
+##################################
+### DISCOUNT TESTING SCENARIOS
+##################################
+
+### Scenario 1: Create new cart
+POST {{baseUrl}}/api/cart/create
+Content-Type: {{contentType}}
+
+###
+### Scenario 1: Add Laptop (75000) - Subtotal 75000, should trigger 10% discount
+POST {{baseUrl}}/api/cart/2/add-item?productId=1&quantity=1
+
+###
+### Scenario 1: Check summary (should show discount)
+GET {{baseUrl}}/api/cart/2/summary
+
+###
+### Scenario 2: Create another cart
+POST {{baseUrl}}/api/cart/create
+Content-Type: {{contentType}}
+
+###
+### Scenario 2: Add USB-C Cable (800) - Below 5000 threshold, no discount
+POST {{baseUrl}}/api/cart/3/add-item?productId=3&quantity=1
+
+###
+### Scenario 2: Check summary (no discount expected)
+GET {{baseUrl}}/api/cart/3/summary
+
+###
+### Scenario 2: Add Mechanical Keyboard (8500) - Total 9300, discount should apply
+POST {{baseUrl}}/api/cart/3/add-item?productId=4&quantity=1
+
+###
+### Scenario 2: Check summary again (discount should now apply)
+GET {{baseUrl}}/api/cart/3/summary
